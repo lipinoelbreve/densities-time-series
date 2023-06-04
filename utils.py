@@ -128,7 +128,7 @@ class FitData():
     self.original_X_test = X_test
     
     if self.method == 'log-lin':
-      self.X_test = sm.add_constant( X_test )
+      self.X_test = sm.add_constant( X_test, has_constant='add' )
       self.prediction = self.res.get_prediction(self.X_test)  
       self.y_hat = np.exp( self.prediction.predicted_mean ) - self.min_value
       self.IC = self.prediction.conf_int(alpha=0.05)
@@ -141,7 +141,7 @@ class FitData():
       res = X_test
       for i in np.arange(2, self.degree+1):
         res = np.column_stack((res, X_test**i))
-      self.X_test = sm.add_constant( res )
+      self.X_test = sm.add_constant( res, has_constant='add' )
       self.prediction = self.res.get_prediction(self.X_test)
       self.y_hat = self.prediction.predicted_mean
       self.IC = self.prediction.conf_int(alpha=0.05)
@@ -150,7 +150,7 @@ class FitData():
       self.y_hat_robust = self.rlm.predict(self.X_test)
 
     elif self.method == 'logit':
-      self.X_test = sm.add_constant( X_test )
+      self.X_test = sm.add_constant( X_test, has_constant='add' )
       self.prediction = self.res.get_prediction(self.X_test)
       self.y_hat = np.exp(self.prediction.predicted_mean)  / (1 + np.exp(self.prediction.predicted_mean))
       self.IC = self.prediction.conf_int(alpha=0.05)
@@ -159,7 +159,7 @@ class FitData():
       self.y_hat_robust = np.exp(self.rlm.predict(self.X_test)) / (1 + np.exp(self.rlm.predict(self.X_test)))
 
     else:
-      self.X_test = sm.add_constant( X_test )
+      self.X_test = sm.add_constant( X_test, has_constant='add' )
       self.prediction = self.res.get_prediction(self.X_test)
       self.y_hat = self.prediction.predicted_mean
       self.IC = self.prediction.conf_int(alpha=0.05)
@@ -179,16 +179,24 @@ class FitData():
 
 #%% PARÁMETROS Y CLASES - PARAMÉTRICO
 class Mixture():
-  def __init__(self, x, n_components, distributions=NormalDistribution):
+  def __init__(self, x, t, n_components, distributions=NormalDistribution):
     self.x = x
     self.n_components = n_components
     self.distributions = distributions
   
-    self.model = GeneralMixtureModel.from_samples(
+    self.model = np.nan
+    for _ in range(1000):
+      model = GeneralMixtureModel.from_samples(
         self.distributions,
         n_components=self.n_components,
         X=self.x.reshape(-1,1)
         )
+      if pd.notna(model.probability(x).sum()):
+        self.model = model
+        break
+    
+    if pd.isna(self.model):
+      print(f'No pude ajustar distribución para t={t}')
     
     order = np.argsort([distribution.parameters[0] for distribution in self.model.distributions])
     self.weights = np.array(json.loads(self.model.to_json())['weights'])[order]
@@ -205,7 +213,7 @@ class Mixtures():
     self.distributions = distributions
 
   def fit(self):
-    self.mixtures = [ Mixture(x=self.data[self.data.time==t][self.vars].values, n_components=self.n_components) \
+    self.mixtures = [ Mixture(x=self.data[self.data.time==t][self.vars].values, t=t, n_components=self.n_components, distributions=self.distributions) \
                      for t in self.time_periods ]
     
     self.medias = pd.DataFrame(
@@ -273,7 +281,7 @@ class Mixtures():
 
     self.new_mixtures = [
         GeneralMixtureModel([
-            NormalDistribution(self.pred_mean.iloc[i,j], self.pred_sd[j]) for j in range(self.n_components)
+            self.distributions(self.pred_mean.iloc[i,j], self.pred_sd[j]) for j in range(self.n_components)
             ], weights = self.pred_weight.iloc[i]) for i in range(steps)
         ]
 
