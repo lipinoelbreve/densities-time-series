@@ -352,9 +352,6 @@ class Fpca():
       self.pred_f = [self.pred_f[i] / integrate.simpson(self.pred_f[i], self.grid_points) for i in range(self.h_steps)]
 
 #%% PARÁMETROS Y CLASES - WGAN
-# Fuentes:
-# https://github.com/eriklindernoren/PyTorch-GAN/tree/master
-
 class GeneratorModel(nn.Module):
   def __init__(self, latent_dim, hidden_layers, hidden_dim, input_dim, leaky_relu, device):
     super(GeneratorModel, self).__init__()
